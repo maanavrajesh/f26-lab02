@@ -128,6 +128,29 @@ empty booking list. That is how it reaches 100% coverage while being green on br
   triggers on the Actions tab is red. This README landed in a later commit so the milestone
   commit stays clean.
 
-## Milestone 2 — not started yet
+## Milestone 2 — fix the bug
+
+### A note on the Actions tab
+
+GitHub disables Actions on a fresh fork, and I had not enabled them before the Milestone 1
+push, so that push produced no CI run at all (the workflow was registered but
+`actions/runs` reported `total_count: 0`). Enabling Actions does not backfill missed runs.
+The red run on the tab is therefore the commit below, which was pushed *after* Actions was
+enabled and *before* any fix — it runs the same broken calculator and the same failing
+property as the Milestone 1 commit.
+
+### Diagnosis
+
+`freeSlots` sorts and clips the bookings, then sweeps them with a `cursor`, emitting a gap
+only *before* each booking's start. When the loop ends it returns immediately, so the final
+stretch from `cursor` to `dayEnd` is never emitted:
+
+- With bookings, all free time after the **last** booking is dropped.
+- With no bookings at all, `cursor` never moves off `dayStart` and the **entire day** is
+  dropped — which is the shrunk sample jqwik found, `Scenario[dayStart=0, dayEnd=1, bookings=[]]`.
+
+The fix is to emit that trailing gap after the loop, guarded by `cursor < dayEnd` so that a
+fully booked day still yields nothing and no empty interval is ever constructed (which
+`TimeInterval` would reject). The property is not touched.
 
 ## Milestone 3 — not started yet
