@@ -153,4 +153,35 @@ The fix is to emit that trailing gap after the loop, guarded by `cursor < dayEnd
 fully booked day still yields nothing and no empty interval is ever constructed (which
 `TimeInterval` would reject). The property is not touched.
 
+### The fix
+
+`AvailabilityCalculator.freeSlots` now emits the trailing gap after the sweep loop:
+
+    if (cursor < dayEnd) {
+        free.add(new TimeInterval(cursor, dayEnd));
+    }
+
+Three lines, in the calculator. The property was not weakened or changed in any way.
+
+### Verification
+
+`mvn test` is green: **8 tests, 0 failures** — the 6 example tests, the provided no-overlap
+property, and `everyMinuteOfTheDayIsExactlyOneOfBookedOrFree` at 1000 tries / 1000 checks.
+Verified twice: once replaying the saved failing sample from `.jqwik-database` (jqwik's
+`SAMPLE_FIRST` mode), and once with that database deleted so the run generated entirely fresh
+inputs.
+
+### For the TA
+
+**One sentence:** `freeSlots` never emitted the final gap between the last booking and the end
+of the business day, so all free time after the last booking — and the entire day when there
+were no bookings — was silently dropped.
+
+The two runs to show side by side on the Actions tab:
+
+| Commit | Contains | CI |
+|---|---|---|
+| `170c2c2` | the failing property, no fix | red |
+| the commit below it | the three-line fix | green |
+
 ## Milestone 3 — not started yet
