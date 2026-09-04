@@ -35,3 +35,99 @@ green once you fix it.
 - Setup: `SETUP.md`
 
 See the Lab 2 handout on the course page for the three milestones you show a TA.
+
+---
+
+# Lab 2 write-up
+
+What I did for each milestone, and what to look at during the TA check-off.
+
+## Setup verification
+
+Before starting I checked every step in `SETUP.md` on this machine:
+
+- JDK 21.0.12.1 (Temurin) and Maven 3.9.9, both on the path.
+- `mvn test` on the untouched starter: BUILD SUCCESS, 7 tests (6 example-based plus the one
+  provided property).
+- A clean build against an empty local Maven repo also passes, so jqwik and JaCoCo resolve
+  from Maven Central with nothing pre-cached.
+- The coverage report generates at `target/site/jacoco/index.html`, where
+  `AvailabilityCalculator` shows **100% instruction and 100% branch coverage** — which is the
+  point the lab is making: the bug below survives a fully covered, fully green suite.
+
+## Milestone 1 — specify the invariant as a property
+
+### The property
+
+`everyMinuteOfTheDayIsExactlyOneOfBookedOrFree`, added to
+`src/test/java/edu/cmu/cs214/availability/AvailabilityProperties.java` along with a small
+`covers(intervals, minute)` helper. It reuses the provided `scenarios()` generator, so it sees
+the same unsorted, overlapping, out-of-hours bookings the example property does.
+
+It walks the business day one minute at a time and asserts, for every minute in
+`[dayStart, dayEnd)`:
+
+    booked != reportedFree
+
+That inequality is the "exactly one" claim from `ARCHITECTURE.md`. It fails if a minute is
+**both** covered by a booking and returned as free, and it fails if a minute is **neither** —
+the half the provided property cannot see.
+
+### The failing sample
+
+`mvn test` fails with 8 tests run, 1 failure. jqwik reported:
+
+    Shrunk Sample (3 steps)
+    -----------------------
+      arg0: Scenario[dayStart=0, dayEnd=1, bookings=[]]
+
+    Original Sample
+    ---------------
+      arg0: Scenario[dayStart=23, dayEnd=1185, bookings=[TimeInterval[start=135, end=359]]]
+
+(Re-runs print this under `Sample` instead of `Shrunk Sample`, because jqwik replays the last
+failing sample first from `.jqwik-database`. The seed for the original run was
+`928765526283672927`.)
+
+### What the calculator returns, and why the two properties disagree
+
+For the shrunk sample — a one-minute day `[0, 1)` with no bookings — `freeSlots` returns the
+**empty list**. The whole day is free, and it reports none of it.
+
+- **The provided "no overlap" property still passes.** It loops over the slots that came back
+  and checks each one against the bookings. Nothing came back, so the loop body never runs and
+  the property is vacuously true. It can only catch a slot that *is* returned and shouldn't be;
+  it is structurally blind to a slot that is missing.
+- **My property fails.** Minute 0 lies in `[dayStart, dayEnd)`. No booking covers it
+  (`booked = false`) and no returned slot covers it (`reportedFree = false`), so the minute is
+  "neither" and the assertion trips:
+
+      minute 0 is neither booked nor reported free; bookings=[], free=[]
+
+The unshrunk sample shows the same bug with more meat on it: for the day `[23, 1185)` with one
+booking `[135, 359)`, the calculator returns only `[TimeInterval[start=23, end=135]]` and
+silently drops the free stretch `[359, 1185)` — over 13 hours of availability.
+
+### The bug
+
+In `AvailabilityCalculator.freeSlots`, the loop emits a gap only *before* each booking's start
+and then returns. It never emits the final gap from `cursor` to `dayEnd`, so any free time
+after the last booking is lost. With no bookings at all, `cursor` never moves off `dayStart`
+and the entire day is dropped.
+
+The generated example suite misses this because every one of its bookings ends exactly at
+`DAY_END`, which leaves `cursor == dayEnd` and no tail gap to lose — and no test ever passes an
+empty booking list. That is how it reaches 100% coverage while being green on broken code.
+
+### For the TA
+
+- The property: `everyMinuteOfTheDayIsExactlyOneOfBookedOrFree` in `AvailabilityProperties.java`.
+- The failing sample, and the two questions above: which minute breaks, what `freeSlots` returns
+  for it, and why the provided property is blind to it.
+- Commit `3f428ed` adds the property **on its own, before any fix**, and the CI run it
+  triggers on the Actions tab is red. This README landed in a later commit so the milestone
+  commit stays clean.
+
+## Milestone 2 — not started yet
+
+## Milestone 3 — not started yet
