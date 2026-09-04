@@ -42,18 +42,55 @@ See the Lab 2 handout on the course page for the three milestones you show a TA.
 
 ## Milestone 1 — the property
 
-`everyMinuteOfTheDayIsExactlyOneOfBookedOrFree` in `AvailabilityProperties.java`, built on the
-provided `scenarios()` generator. It walks every minute of the business day and asserts
-`booked != reportedFree`: exactly one, never both and never neither.
+Added to `AvailabilityProperties.java`, built on the provided `scenarios()` generator so it
+sees the same unsorted, overlapping, out-of-hours bookings the example property does:
+
+```java
+@Property
+void everyMinuteOfTheDayIsExactlyOneOfBookedOrFree(@ForAll("scenarios") Scenario s) {
+    List<TimeInterval> free = calc.freeSlots(s.dayStart(), s.dayEnd(), s.bookings());
+    for (int minute = s.dayStart(); minute < s.dayEnd(); minute++) {
+        boolean booked = covers(s.bookings(), minute);
+        boolean reportedFree = covers(free, minute);
+        int m = minute;
+        assertTrue(booked != reportedFree,
+            () -> "minute " + m + " is "
+                + (booked ? "both booked and reported free" : "neither booked nor reported free")
+                + "; bookings=" + s.bookings() + ", free=" + free);
+    }
+}
+```
+
+`covers(intervals, minute)` is a small helper asking whether any interval in the list contains
+that minute. The assertion `booked != reportedFree` is the "exactly one" claim: a minute may
+not be both booked and reported free, and it may not be neither.
+
+### The smallest failing sample
 
 It failed on the first run. jqwik shrank the counterexample to a one-minute day with nothing
-booked:
+booked — printed under `Shrunk Sample` on that run, and under `Sample` on re-runs, since jqwik
+replays the last failing sample from `.jqwik-database` first:
 
     Scenario[dayStart=0, dayEnd=1, bookings=[]]
 
-`freeSlots` returns an empty list for it. The provided no-overlap property passes on the same
-sample because it only inspects slots that came back — with none returned, its loop body never
-runs. Mine fails because minute 0 is neither booked nor reported free.
+**What the calculator returns for it.** An empty list. There are no bookings to sweep, so
+`cursor` never leaves `dayStart` and nothing is ever emitted. The whole day is free and none of
+it is reported.
+
+**Why the provided no-overlap property still passes.** It iterates the slots that came back and
+checks each one against the bookings. Nothing came back, so the loop body never executes and
+the property is vacuously true. It can only catch a slot that *is* returned and should not be;
+it is structurally blind to a slot that is missing.
+
+**Why mine fails.** Minute 0 lies in `[dayStart, dayEnd)`. No booking covers it and no returned
+slot covers it, so `booked` and `reportedFree` are both false, the minute is "neither", and the
+assertion trips:
+
+    minute 0 is neither booked nor reported free; bookings=[], free=[]
+
+The unshrunk sample shows the same bug at realistic scale: for the day `[23, 1185)` with one
+booking `[135, 359)`, the calculator returns only `[23, 135)` and drops the free stretch
+`[359, 1185)`.
 
 Pushed on its own, before any fix.
 
