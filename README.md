@@ -109,6 +109,9 @@ CI on the fork went red then green:
 | `170c2c2` | the failing property, no fix | red |
 | `aed1d6e` | the three-line fix | green |
 
+The tip of `main` runs green too, so the finished state of the repo is verified by CI and not
+just locally.
+
 Actions are disabled by default on a fresh fork and GitHub does not backfill missed runs, so
 the Milestone 1 commit (`3f428ed`) has no run of its own. `170c2c2` is the same broken
 calculator and the same failing property, pushed once Actions were on.
